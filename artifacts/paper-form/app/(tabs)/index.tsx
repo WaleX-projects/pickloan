@@ -42,10 +42,14 @@ export default function HomeScreen() {
           <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>{forms.length} total forms</Text>
         </View>
         <View style={styles.statsGrid}>
-          <StatCard value={String(forms.length)} label="Total forms" icon="layers" tone="teal" />
-          <StatCard value={String(confirmedCount)} label="Confirmed" icon="check-circle" tone="green" />
-          <StatCard value={String(reviewCount)} label="Need review" icon="alert-circle" tone="amber" />
-          <StatCard value={String(pendingCount)} label="Pending sync" icon="upload-cloud" tone="slate" />
+          <View style={styles.statsRow}>
+            <StatCard value={String(forms.length)} label="Total forms" icon="layers" tone="teal" />
+            <StatCard value={String(confirmedCount)} label="Confirmed" icon="check-circle" tone="green" />
+          </View>
+          <View style={styles.statsRow}>
+            <StatCard value={String(reviewCount)} label="Need review" icon="alert-circle" tone="amber" />
+            <StatCard value={String(pendingCount)} label="Pending sync" icon="upload-cloud" tone="slate" />
+          </View>
         </View>
         <View style={styles.sectionHeading}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Recent forms</Text>
@@ -92,8 +96,9 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 17, fontFamily: 'Inter_600SemiBold' },
   sectionHint: { fontSize: 12, fontFamily: 'Inter_400Regular' },
   viewAll: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 28 },
-  statCard: { width: '48.5%', borderRadius: 15, borderWidth: 1, padding: 13, minHeight: 106 },
+  statsGrid: { marginBottom: 28 },
+  statsRow: { flexDirection: 'row', marginBottom: 10 },
+  statCard: { flex: 1, borderRadius: 15, borderWidth: 1, padding: 13, minHeight: 106 },
   statIcon: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 11 },
   statValue: { fontSize: 24, fontFamily: 'Inter_700Bold', marginBottom: 3 },
   statLabel: { fontSize: 11, fontFamily: 'Inter_400Regular' },

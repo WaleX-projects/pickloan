@@ -26,10 +26,14 @@ export default function SyncScreen() {
           <View style={styles.statusCopy}><Text style={[styles.statusTitle, { color: colors.foreground }]}>Waiting for internet</Text><Text style={[styles.statusBody, { color: colors.mutedForeground }]}>Your scans stay safe on this device and will upload when you’re back online.</Text></View>
         </View>
         <View style={styles.metrics}>
-          <SyncMetric value={String(confirmed.length)} label="Synced" icon="check-circle" color="#2B6A4A" bg="#E2F0E8" />
-          <SyncMetric value="0" label="Uploading" icon="upload-cloud" color="#315D8F" bg="#E8F0FB" />
-          <SyncMetric value={String(pending.length)} label="Waiting" icon="clock" color="#C88919" bg="#FFF3D9" />
-          <SyncMetric value={String(failed.length)} label="Failed" icon="alert-circle" color="#9B3D3B" bg="#F8E2E1" />
+          <View style={styles.metricRow}>
+            <SyncMetric value={String(confirmed.length)} label="Synced" icon="check-circle" color="#2B6A4A" bg="#E2F0E8" />
+            <SyncMetric value="0" label="Uploading" icon="upload-cloud" color="#315D8F" bg="#E8F0FB" />
+          </View>
+          <View style={styles.metricRow}>
+            <SyncMetric value={String(pending.length)} label="Waiting" icon="clock" color="#C88919" bg="#FFF3D9" />
+            <SyncMetric value={String(failed.length)} label="Failed" icon="alert-circle" color="#9B3D3B" bg="#F8E2E1" />
+          </View>
         </View>
         {failed.length ? <><Text style={[styles.sectionTitle, { color: colors.foreground }]}>Needs another try</Text>{failed.map((form) => <View key={form.id} style={styles.failedRow}><FormCard form={form} onPress={() => router.push(`/review?id=${form.id}`)} /><Pressable onPress={() => retryForm(form.id)} style={[styles.retry, { borderColor: colors.primary }]}><Text style={[styles.retryText, { color: colors.primary }]}>Retry upload</Text></Pressable></View>)}</> : null}
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Waiting to sync</Text>
@@ -50,8 +54,9 @@ const styles = StyleSheet.create({
   statusCopy: { flex: 1 },
   statusTitle: { fontSize: 15, fontFamily: 'Inter_600SemiBold', marginBottom: 5 },
   statusBody: { fontSize: 12, lineHeight: 18, fontFamily: 'Inter_400Regular' },
-  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 28 },
-  metric: { width: '48.5%', borderRadius: 14, borderWidth: 1, padding: 12, minHeight: 96 },
+  metrics: { marginBottom: 28 },
+  metricRow: { flexDirection: 'row', marginBottom: 10 },
+  metric: { flex: 1, borderRadius: 14, borderWidth: 1, padding: 12, minHeight: 96 },
   metricIcon: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginBottom: 9 },
   metricValue: { fontSize: 21, fontFamily: 'Inter_700Bold', marginBottom: 2 },
   metricLabel: { fontSize: 11, fontFamily: 'Inter_400Regular' },
