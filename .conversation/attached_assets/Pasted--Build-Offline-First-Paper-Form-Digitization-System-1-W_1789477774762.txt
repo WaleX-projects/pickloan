@@ -1,0 +1,1330 @@
+# Build: Offline-First Paper Form Digitization System
+
+## 1. What We Are Building
+
+Build a production-quality mobile application for loan officers/staff who currently receive **physical handwritten loan application forms**.
+
+The paper form already exists.
+
+The staff member does NOT fill out a digital loan application from scratch.
+
+Instead, the workflow is:
+
+**Paper form → Scan with phone → Save locally → OCR/AI extraction → Review extracted data → Correct mistakes → Confirm → Save to database**
+
+The primary goal is to eliminate the tedious process where staff manually read a handwritten paper form and type every field into a database.
+
+The application must work **offline-first**.
+
+If there is no internet:
+
+* Staff can scan forms.
+* Scanned documents are saved locally.
+* Staff can view scanned documents.
+* Form records are stored locally.
+* The app queues work for synchronization.
+* Nothing should be lost.
+
+When internet becomes available:
+
+* Local records synchronize with the backend.
+* Scanned documents upload.
+* OCR/AI processing begins.
+* Extracted information becomes available for review.
+* After human confirmation, the official database record is updated.
+
+---
+
+# 2. Technology
+
+## Mobile
+
+Use:
+
+* React Native
+* Expo
+* TypeScript
+* Expo Router
+* SQLite for local structured data
+* Expo FileSystem for scanned files
+* Expo Camera/document scanning functionality where appropriate
+* TanStack Query for server state
+* A simple offline sync manager
+
+Do not build the UI like a generic AI app.
+
+It should feel like a serious business application used by loan officers.
+
+---
+
+# 3. Backend
+
+Use:
+
+* FastAPI
+* PostgreSQL
+* SQLAlchemy
+* Pydantic
+* S3-compatible object storage for scanned documents
+* Background processing for OCR/AI extraction
+
+The backend should expose a clean REST API.
+
+Keep the backend modular but simple.
+
+Suggested structure:
+
+```text
+backend/
+├── app/
+│   ├── main.py
+│   ├── config.py
+│   ├── database.py
+│   ├── models.py
+│   ├── schemas.py
+│   ├── api/
+│   │   ├── auth.py
+│   │   ├── applications.py
+│   │   ├── documents.py
+│   │   ├── extraction.py
+│   │   └── sync.py
+│   ├── services/
+│   │   ├── storage.py
+│   │   ├── ocr.py
+│   │   ├── extraction.py
+│   │   └── sync.py
+│   └── workers/
+│       └── processing.py
+└── requirements.txt
+```
+
+---
+
+# 4. Core Concept
+
+There are three separate things:
+
+### A. Original document
+
+The actual scanned paper form.
+
+Example:
+
+```text
+loan_application_001.jpg
+```
+
+This must never be destroyed after extraction.
+
+### B. AI extraction
+
+The information AI believes is present in the paper form.
+
+Example:
+
+```json
+{
+  "full_name": {
+    "value": "John Doe",
+    "confidence": 0.96
+  },
+  "phone_number": {
+    "value": "08012345678",
+    "confidence": 0.91
+  },
+  "loan_amount": {
+    "value": 500000,
+    "confidence": 0.94
+  }
+}
+```
+
+### C. Confirmed database record
+
+The final information after a human has reviewed it.
+
+AI must NEVER silently write unverified extracted information into the official application record.
+
+The human is always the final authority.
+
+---
+
+# 5. Main User Flow
+
+## Screen 1 — Dashboard
+
+Show:
+
+```text
+Good morning
+
+Today's work
+
+24
+Total Forms
+
+18
+Processed
+
+4
+Need Review
+
+2
+Pending Sync
+```
+
+Primary action:
+
+```text
+[ + Scan New Form ]
+```
+
+Below that:
+
+```text
+Recent Forms
+
+John Doe
+Loan Application
+Needs Review
+2 minutes ago
+
+Mary Johnson
+Loan Application
+Confirmed
+15 minutes ago
+
+Michael Ade
+Loan Application
+Pending Sync
+1 hour ago
+```
+
+The dashboard should immediately communicate what requires attention.
+
+---
+
+# 6. Scan Flow
+
+When the user taps:
+
+```text
++ Scan New Form
+```
+
+Open a document scanner.
+
+The scanner should:
+
+* Detect the paper edges.
+* Allow automatic capture.
+* Allow manual capture.
+* Support multiple pages.
+* Crop the document.
+* Correct perspective.
+* Improve readability.
+* Let the user retake a page.
+* Show all captured pages before finishing.
+
+Example:
+
+```text
+┌─────────────────────────────┐
+│        Scan Form            │
+│                             │
+│     ┌─────────────────┐     │
+│     │                 │     │
+│     │  PAPER FORM     │     │
+│     │                 │     │
+│     │                 │     │
+│     └─────────────────┘     │
+│                             │
+│       [ Capture ]            │
+│                             │
+│ Page 1 of 3                  │
+└─────────────────────────────┘
+```
+
+After scanning:
+
+```text
+3 pages captured
+
+[ Add Page ]
+
+Page 1   Page 2   Page 3
+
+[ Save Form ]
+```
+
+The document must immediately be saved locally before any network operation.
+
+---
+
+# 7. Offline-First Behavior
+
+This is extremely important.
+
+The application must NOT assume internet connectivity.
+
+When a form is scanned:
+
+```text
+LOCAL
+```
+
+Save:
+
+* local UUID
+* scanned file
+* metadata
+* timestamp
+* sync status
+
+Example local record:
+
+```json
+{
+  "local_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "SYNC_PENDING",
+  "created_at": "2026-09-15T10:30:00Z"
+}
+```
+
+Possible statuses:
+
+```text
+LOCAL
+SYNC_PENDING
+UPLOADING
+UPLOADED
+PROCESSING
+NEEDS_REVIEW
+CONFIRMED
+FAILED
+```
+
+When connectivity returns:
+
+```text
+LOCAL
+   ↓
+SYNC_PENDING
+   ↓
+UPLOADING
+   ↓
+UPLOADED
+   ↓
+PROCESSING
+   ↓
+NEEDS_REVIEW
+   ↓
+CONFIRMED
+```
+
+Never delete the local document immediately after synchronization.
+
+Keep a local copy until the server confirms successful synchronization.
+
+---
+
+# 8. Form List
+
+Create a searchable list of all scanned forms.
+
+Each card should show:
+
+```text
+John Doe
+Loan Application
+
+Scanned:
+15 Sep 2026
+
+Status:
+Needs Review
+
+[ Open ]
+```
+
+Statuses should have clear visual indicators:
+
+* Pending Sync
+* Processing
+* Needs Review
+* Confirmed
+* Failed
+
+Allow filtering:
+
+```text
+All
+Needs Review
+Confirmed
+Pending Sync
+Failed
+```
+
+---
+
+# 9. Document Viewer
+
+When the user opens a form, show the original scanned paper form.
+
+The user must be able to:
+
+* Zoom
+* Pan
+* Swipe between pages
+* Rotate if necessary
+* View the original scan while reviewing extracted data
+
+This is extremely important because the user needs to compare AI extraction against the actual handwriting.
+
+---
+
+# 10. AI Extraction
+
+After the document reaches the backend, run OCR/AI extraction.
+
+The system knows the expected structure of the paper loan form.
+
+Do NOT ask an AI model to simply:
+
+> "Understand this document."
+
+Instead, define the expected fields.
+
+Example:
+
+```json
+{
+  "full_name": "",
+  "phone_number": "",
+  "address": "",
+  "date_of_birth": "",
+  "occupation": "",
+  "employer": "",
+  "monthly_income": "",
+  "loan_amount": "",
+  "loan_purpose": "",
+  "repayment_period": ""
+}
+```
+
+The extraction system should map handwriting from the known form into these fields.
+
+---
+
+# 11. Extraction JSON
+
+The AI extraction response should follow a strict schema.
+
+Example:
+
+```json
+{
+  "form_type": "loan_application_v1",
+  "fields": {
+    "full_name": {
+      "value": "John Doe",
+      "confidence": 0.97,
+      "source_text": "JOHN DOE"
+    },
+    "phone_number": {
+      "value": "08012345678",
+      "confidence": 0.91,
+      "source_text": "08012345678"
+    },
+    "address": {
+      "value": "12 Allen Avenue, Ikeja",
+      "confidence": 0.82,
+      "source_text": "12 Allen Avenue Ikeja"
+    },
+    "monthly_income": {
+      "value": 150000,
+      "confidence": 0.61,
+      "source_text": "150,000"
+    },
+    "loan_amount": {
+      "value": 500000,
+      "confidence": 0.96,
+      "source_text": "500,000"
+    }
+  },
+  "missing_fields": [],
+  "warnings": []
+}
+```
+
+Every extracted field should have:
+
+```text
+value
+confidence
+source_text
+```
+
+Do not expose meaningless technical AI terminology to the normal user.
+
+---
+
+# 12. Review Screen
+
+This is the most important screen in the application.
+
+Split the screen into two areas.
+
+Desktop/tablet layout:
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ Review Application                              [Confirm]   │
+├──────────────────────────┬──────────────────────────────────┤
+│                          │                                  │
+│                          │  Extracted Information            │
+│                          │                                  │
+│   ORIGINAL PAPER FORM    │  Full Name                       │
+│                          │  John Doe                    ✓   │
+│   [ scanned document ]   │                                  │
+│                          │  Phone Number                     │
+│                          │  08012345678                  ✓  │
+│                          │                                  │
+│                          │  Monthly Income                   │
+│                          │  ₦150,000                    ⚠   │
+│                          │                                  │
+│                          │  Loan Amount                      │
+│                          │  ₦500,000                     ✓  │
+│                          │                                  │
+└──────────────────────────┴──────────────────────────────────┘
+```
+
+On mobile, use tabs or a toggle:
+
+```text
+[ Original ] [ Extracted ]
+```
+
+The user can switch between the scanned document and extracted fields.
+
+---
+
+# 13. Confidence / Review Logic
+
+Do not rely only on the AI's confidence score.
+
+Use validation too.
+
+For example:
+
+```text
+Confidence >= 0.90
+→ probably okay
+
+Confidence 0.70–0.89
+→ review recommended
+
+Confidence < 0.70
+→ requires review
+```
+
+Also flag validation problems.
+
+Examples:
+
+```text
+Invalid Nigerian phone number
+Missing required field
+Invalid date
+Loan amount is not numeric
+Monthly income appears unusually formatted
+```
+
+A field can therefore be:
+
+```text
+✓ Valid
+⚠ Review
+✕ Invalid
+```
+
+---
+
+# 14. Editing Extracted Fields
+
+Every extracted field must be editable.
+
+Example:
+
+```text
+Full Name
+
+[ John Doe                  ]
+```
+
+If the AI extracted:
+
+```text
+John Doo
+```
+
+the staff member can correct it to:
+
+```text
+John Doe
+```
+
+The original AI value should be preserved in the extraction record for auditing.
+
+---
+
+# 15. Confirmation
+
+At the bottom:
+
+```text
+☑ I have reviewed the extracted information against the original paper form.
+
+[ Confirm & Save ]
+```
+
+Do not allow confirmation if required fields are missing unless the user explicitly chooses a "Save Incomplete" workflow.
+
+After confirmation:
+
+```text
+Application Confirmed
+
+The verified information has been saved.
+
+[ View Application ]
+```
+
+Status becomes:
+
+```text
+CONFIRMED
+```
+
+---
+
+# 16. Database
+
+Use PostgreSQL.
+
+Create these core tables.
+
+## users
+
+```text
+id
+name
+email
+phone
+role
+created_at
+updated_at
+```
+
+## loan_applications
+
+```text
+id
+full_name
+phone_number
+address
+date_of_birth
+occupation
+employer
+monthly_income
+loan_amount
+loan_purpose
+repayment_period
+status
+created_by
+confirmed_by
+created_at
+updated_at
+confirmed_at
+```
+
+## documents
+
+```text
+id
+application_id
+storage_key
+filename
+mime_type
+size
+checksum
+page_count
+created_at
+uploaded_at
+```
+
+## extractions
+
+```text
+id
+application_id
+document_id
+form_type
+schema_version
+raw_text
+structured_data
+overall_confidence
+status
+model_name
+created_at
+reviewed_at
+reviewed_by
+```
+
+`structured_data` can use PostgreSQL JSONB.
+
+## audit_logs
+
+```text
+id
+application_id
+user_id
+action
+before_data
+after_data
+created_at
+```
+
+Audit important actions:
+
+```text
+FORM_SCANNED
+DOCUMENT_UPLOADED
+EXTRACTION_COMPLETED
+FIELD_CORRECTED
+APPLICATION_CONFIRMED
+APPLICATION_UPDATED
+```
+
+---
+
+# 17. API
+
+Implement:
+
+```http
+POST /api/v1/auth/login
+
+GET /api/v1/applications
+
+POST /api/v1/applications
+
+GET /api/v1/applications/{id}
+
+PATCH /api/v1/applications/{id}
+
+POST /api/v1/applications/{id}/documents
+
+POST /api/v1/uploads/presign
+
+POST /api/v1/uploads/{id}/complete
+
+POST /api/v1/applications/{id}/process
+
+GET /api/v1/applications/{id}/extraction
+
+PATCH /api/v1/applications/{id}/extraction
+
+POST /api/v1/applications/{id}/confirm
+
+POST /api/v1/sync
+```
+
+Use idempotency keys for synchronization so that a poor network connection cannot create duplicate applications.
+
+---
+
+# 18. Synchronization
+
+The mobile application should have a local sync queue.
+
+Example:
+
+```text
+sync_queue
+
+id
+entity_type
+entity_id
+operation
+payload
+attempts
+status
+created_at
+last_attempt_at
+```
+
+Example:
+
+```json
+{
+  "entity_type": "application",
+  "entity_id": "local-uuid",
+  "operation": "CREATE"
+}
+```
+
+For documents:
+
+```text
+SCAN
+ ↓
+SAVE LOCALLY
+ ↓
+ADD TO SYNC QUEUE
+ ↓
+WAIT FOR INTERNET
+ ↓
+UPLOAD
+ ↓
+SERVER CONFIRMS
+ ↓
+PROCESS
+```
+
+The synchronization process must be retryable.
+
+If upload fails:
+
+```text
+FAILED
+```
+
+then retry later.
+
+Do not lose the scan.
+
+---
+
+# 19. Duplicate Protection
+
+Every local application should have a UUID generated on the device.
+
+Also calculate a checksum for the scanned document.
+
+The backend should use:
+
+```text
+Idempotency-Key
+```
+
+and document checksum to prevent duplicate records caused by retries.
+
+---
+
+# 20. Processing Architecture
+
+Use asynchronous processing.
+
+Do NOT make the mobile application wait for a long AI request.
+
+Instead:
+
+```text
+Mobile
+   ↓
+Upload document
+   ↓
+POST /process
+   ↓
+Backend creates processing job
+   ↓
+Worker
+   ↓
+OCR
+   ↓
+AI extraction
+   ↓
+Validation
+   ↓
+Save extraction
+   ↓
+Status = NEEDS_REVIEW
+```
+
+The mobile app can poll:
+
+```http
+GET /api/v1/applications/{id}
+```
+
+or:
+
+```http
+GET /api/v1/jobs/{id}
+```
+
+until processing is complete.
+
+---
+
+# 21. AI Architecture
+
+The AI pipeline should be:
+
+```text
+Scanned Document
+       ↓
+Image preprocessing
+       ↓
+OCR / handwriting recognition
+       ↓
+Raw extracted text
+       ↓
+Structured extraction
+       ↓
+Validation
+       ↓
+Confidence scoring
+       ↓
+Human review
+       ↓
+Confirmed database record
+```
+
+If using AWS:
+
+```text
+S3
+ ↓
+OCR service
+ ↓
+AWS Bedrock / Nova
+ ↓
+Structured extraction
+ ↓
+Validation
+ ↓
+PostgreSQL
+```
+
+Do not introduce an agent framework unless it is genuinely useful.
+
+This workflow is primarily a document-processing pipeline.
+
+An agent can be added later for orchestration.
+
+---
+
+# 22. Important AI Rules
+
+The AI must:
+
+1. Never invent information.
+2. Never guess a missing field.
+3. Return `null` when information cannot be read.
+4. Preserve uncertainty.
+5. Never silently modify the original document.
+6. Never directly mark an application as confirmed.
+7. Never overwrite a human-confirmed value.
+8. Return structured JSON.
+9. Keep the original OCR/source text.
+10. Allow humans to correct every extracted field.
+
+If handwriting is unclear:
+
+```json
+{
+  "value": null,
+  "confidence": 0.21,
+  "source_text": "unclear"
+}
+```
+
+rather than guessing.
+
+---
+
+# 23. UI Design
+
+The visual style should be:
+
+* Professional
+* Clean
+* Modern
+* Simple
+* Business/financial software
+* High readability
+* Mobile-first
+* Minimal decoration
+* No gradients
+* No excessive animations
+* No "AI futuristic" visual style
+* No unnecessary illustrations
+
+Use a neutral professional color system.
+
+Prioritize:
+
+```text
+Information hierarchy
+Readability
+Large touch targets
+Clear status indicators
+Fast workflows
+```
+
+The user should be able to scan a form in seconds.
+
+---
+
+# 24. Navigation
+
+Use bottom navigation:
+
+```text
+Home
+Forms
+Sync
+Settings
+```
+
+Home:
+
+```text
+Today's activity
+Needs review
+Pending sync
+Scan button
+Recent forms
+```
+
+Forms:
+
+```text
+All
+Needs Review
+Confirmed
+Pending Sync
+Failed
+```
+
+Sync:
+
+```text
+Synced
+Uploading
+Waiting for Internet
+Failed
+```
+
+Settings:
+
+```text
+Account
+Storage
+Sync
+About
+Logout
+```
+
+---
+
+# 25. Offline Indicator
+
+Always make the connection state obvious.
+
+When offline:
+
+```text
+● Offline
+
+Forms will be synchronized when internet returns.
+```
+
+When online:
+
+```text
+● Online
+```
+
+Do not block the user from scanning because they are offline.
+
+---
+
+# 26. Sync Screen
+
+Create a dedicated synchronization screen.
+
+Example:
+
+```text
+Sync
+
+✓ 18 forms synchronized
+
+↑ 2 forms uploading
+
+⏳ 4 forms waiting for internet
+
+⚠ 1 form failed
+
+[ Retry Failed ]
+```
+
+This gives staff confidence that their work has not disappeared.
+
+---
+
+# 27. Error Handling
+
+Never show technical errors like:
+
+```text
+HTTP 500
+AxiosError
+Network request failed
+```
+
+to normal users.
+
+Instead:
+
+```text
+We couldn't upload this form.
+
+Your scanned document is safe on this device.
+
+[ Retry ]
+```
+
+For AI processing:
+
+```text
+We couldn't process this form yet.
+
+The original scan is safe and will not be lost.
+
+[ Try Again ]
+```
+
+---
+
+# 28. Security
+
+Implement:
+
+* Authenticated API requests
+* Secure token storage
+* HTTPS
+* Access control
+* Server-side validation
+* File type validation
+* File size limits
+* Audit logging
+* Private document storage
+* Signed URLs for document access
+
+Do not expose S3/private storage URLs permanently.
+
+---
+
+# 29. Important Product Principle
+
+The application is NOT replacing the paper loan form.
+
+It is replacing the **manual data-entry work that happens after the paper form is completed**.
+
+The real workflow is:
+
+```text
+CUSTOMER
+   ↓
+fills paper form by hand
+   ↓
+LOAN OFFICER
+   ↓
+scans paper form
+   ↓
+SYSTEM
+   ↓
+extracts information
+   ↓
+LOAN OFFICER
+   ↓
+reviews/corrects information
+   ↓
+SYSTEM
+   ↓
+stores verified data
+```
+
+The original paper document remains attached to the digital record.
+
+---
+
+# 30. MVP Priority
+
+Do not overbuild.
+
+Build in this order:
+
+### Phase 1
+
+Mobile UI:
+
+* Dashboard
+* Scan form
+* Local storage
+* Forms list
+* Document viewer
+* Review screen
+
+### Phase 2
+
+Offline database:
+
+* SQLite
+* Local application records
+* Local scanned documents
+* Sync queue
+* Offline/online detection
+
+### Phase 3
+
+Backend:
+
+* FastAPI
+* PostgreSQL
+* Authentication
+* Applications
+* Documents
+* S3 storage
+
+### Phase 4
+
+Synchronization:
+
+* Upload scans
+* Retry failed uploads
+* Duplicate protection
+* Sync status
+
+### Phase 5
+
+AI:
+
+* OCR
+* Structured extraction
+* Confidence
+* Validation
+* Review workflow
+
+### Phase 6
+
+Audit/security:
+
+* Audit logs
+* Permissions
+* Secure document access
+
+Do not build unnecessary features before these work.
+
+---
+
+# 31. Development Rules
+
+Build working software, not mockups.
+
+Every screen must be connected to real state.
+
+Do not use fake application data once the underlying feature has been implemented.
+
+Start with local functionality so the application can be tested without the backend.
+
+Then connect the backend.
+
+Use TypeScript throughout the mobile application.
+
+Use Pydantic schemas throughout the API.
+
+Use database migrations.
+
+Keep components reusable.
+
+Keep the architecture simple.
+
+Do not introduce unnecessary libraries.
+
+---
+
+# 32. First Build Target
+
+The first working version should allow me to do this:
+
+```text
+Open App
+    ↓
+Tap "Scan Form"
+    ↓
+Scan paper form
+    ↓
+Form saved locally
+    ↓
+Form appears in Forms list
+    ↓
+Open form
+    ↓
+View scanned document
+    ↓
+View extracted fields
+    ↓
+Edit fields
+    ↓
+Confirm
+    ↓
+Application becomes CONFIRMED
+```
+
+This should work even without an internet connection for everything that does not require cloud AI.
+
+When internet becomes available:
+
+```text
+Local Form
+    ↓
+Sync
+    ↓
+Backend
+    ↓
+Document Storage
+    ↓
+OCR/AI
+    ↓
+Extraction
+    ↓
+NEEDS_REVIEW
+```
+
+---
+
+# 33. Build Philosophy
+
+Do not spend most of the development time creating elaborate UI.
+
+The important engineering problems are:
+
+1. Reliable document scanning.
+2. Offline persistence.
+3. Reliable synchronization.
+4. Document storage.
+5. Handwriting/OCR extraction.
+6. Structured data extraction.
+7. Human verification.
+8. Preventing duplicate records.
+9. Preserving the original document.
+10. Auditability.
+
+Build those correctly.
+
+The finished product should feel like a **professional internal tool for loan officers**, not a consumer banking app and not an AI demo.
