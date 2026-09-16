@@ -9,6 +9,11 @@ import { useColors } from '@/hooks/useColors';
 
 const fieldLabels: Record<FormFieldKey, string> = {
   fullName: 'Full name',
+  gender: "Gender",
+  maritalStatus: 'marital status',
+  emailAddress: 'Email Address',
+  residentialAddress: 'ResidentialAddress',
+  
   phoneNumber: 'Phone number',
   address: 'Address',
   dateOfBirth: 'Date of birth',
